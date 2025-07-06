@@ -164,7 +164,7 @@ class Functions:
             # Log interaction for download or further use    
             self.log_interaction(user_query, input_lang, output_lang, translated_text, bot_reply, rating) 
 
-            if st.button("Next"):
+            if st.button("Clear"):
                 st.session_state.clear_query = True 
                 st.session_state.submitted = False
                 reset_conversation()

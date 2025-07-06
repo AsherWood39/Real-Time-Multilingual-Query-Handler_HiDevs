@@ -11,3 +11,7 @@ Translates incoming customer queries from various languages into English using A
 
 ### Outcome :
 A minimal multilingual support interface that takes queries in any language, translates them into English in real-time, and optionally generates a predefined response.
+
+
+### URL To The Deployed App Using Streamlit :
+Would like to have a conversation with the bot yourself? Access the app here : https://real-time-multilingual-query-handlerhidevs-obwtgqtb4wqnikbxaxc.streamlit.app/

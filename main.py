@@ -121,13 +121,19 @@ class Functions:
         }) 
 
     def offer_download(self):
-        if st.button("Download Log CSV"):
-            df = pd.DataFrame(st.session_state.log)
-            df.to_csv("translation_log.csv", index=False)
-            st.success("Saved as translation_log.csv")
-
+        if "log" in st.session_state and st.session_state.log:
+            if st.button("Download Log CSV"):
+                df = pd.DataFrame(st.session_state.log)
+                df.to_csv("translation_log.csv", index=False)
+                st.success("Saved as translation_log.csv")
         else:
-            st.info("Enter a message to begin translation and support.") 
+            st.info("Enter a message and submit it to enable download.")
+
+    def reset_conversation(self):
+        keys_to_clear = ["submitted", "last_translation", "last_reply", "rating"]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]         
 
     def show_result(self, user_query, input_lang, output_lang):
         # Show results and rating slider if submitted
@@ -156,7 +162,11 @@ class Functions:
             # Log interaction for download or further use    
             self.log_interaction(user_query, input_lang, output_lang,rating) 
 
-        self.offer_download()          
+            if st.button("Next"):
+                self.reset_conversation()
+                st.experimental_rerun()
+
+            self.offer_download()            
 
 def main():
     st.title("Real Time Multilingual Query Translator Bot")
@@ -177,9 +187,7 @@ def main():
     
     input_lang, output_lang, user_query = func.get_user_inputs()
 
-    if st.button("Translate and Respond") and user_query.strip():
-        st.write("Answering ...")
-
+    if st.button("Submit") and user_query.strip():
         input_lang_code = LANGUAGES[input_lang]
         output_lang_code = LANGUAGES[output_lang]
 

@@ -1,4 +1,6 @@
 import streamlit as st
+from streamlit.runtime.scriptrunner import RerunException
+from streamlit.runtime.scriptrunner.script_runner import add_script_run_ctx
 from langchain_groq import ChatGroq
 from langchain.schema import SystemMessage, HumanMessage
 from langdetect import detect
@@ -25,8 +27,14 @@ def get_language_name_by_code(code):
     try:
         return langcodes.Language.get(code).language_name()
     except Exception:
-        return code  
-
+        return code 
+    
+def reset_conversation():
+        keys_to_clear = ["user_query", "submitted", "rating"]
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]    
+ 
 class Functions:
     def __init__(self, llm, languages):
         self.llm = llm
@@ -45,6 +53,10 @@ class Functions:
             )
         
     def get_user_inputs(self):
+        if st.session_state.get("clear_query", False):
+            st.session_state["user_query"] = ""
+            st.session_state["clear_query"] = False 
+
         input_lang = st.selectbox(
             "Input Language (or Auto Detect):", 
             options=list(LANGUAGES.keys()), 
@@ -61,23 +73,19 @@ class Functions:
 
         user_query = st.text_area(
             "Enter your query here : ",
-            height = 150
+            height = 150,
+            key="user_query"
         )
         
         return input_lang, output_lang, user_query
 
     def translate_if_needed(self, user_query, input_lang, output_lang, input_lang_code, output_lang_code):
-        @st.cache_data(show_spinner=False)
-        def get_cached_translation(_prompt_str):
-            prompt = [
-            SystemMessage(content="You are a translation engine. Translate exactly, and do not add anything."),
-            HumanMessage(content=_prompt_str)
-        ]
-            return llm.invoke(prompt).content.strip()
-    
         if input_lang_code != output_lang_code:
-            prompt_str = f"Translate this from {input_lang} to {output_lang}:\n{user_query}"
-            response = get_cached_translation(prompt_str)
+            prompt_str = [
+                SystemMessage(content="You are a precise and fluent translation engine. Translate the text exactly and completely from {input_lang} to {output_lang}. Do not add or remove anything."),
+                HumanMessage(content=f"Translate this from {input_lang} to {output_lang}:\n{user_query}")
+                ]
+            response = llm.invoke(prompt_str).content.strip()
 
             if not response or response.strip() == user_query.strip() or "Translate this" in response:
                 st.warning("Translation may have failed. Sending original message to the assistant.")
@@ -106,7 +114,7 @@ class Functions:
         ]
         return llm.invoke(prompt).content.strip()      
           
-    def log_interaction(self, user_query, input_lang, output_lang, rating):
+    def log_interaction(self, user_query, input_lang, output_lang, translated_text, bot_reply, rating):
         if "log" not in st.session_state:
             st.session_state.log = []
 
@@ -115,8 +123,8 @@ class Functions:
             "original_prompt": user_query,
             "input_lang": input_lang,
             "output_lang": output_lang,
-            "translated": st.session_state.last_translation,
-            "reply": st.session_state.last_reply,
+            "translated": translated_text,
+            "reply": bot_reply,
             "rating": rating
         }) 
 
@@ -129,21 +137,15 @@ class Functions:
         else:
             st.info("Enter a message and submit it to enable download.")
 
-    def reset_conversation(self):
-        keys_to_clear = ["submitted", "last_translation", "last_reply", "rating"]
-        for key in keys_to_clear:
-            if key in st.session_state:
-                del st.session_state[key]         
-
-    def show_result(self, user_query, input_lang, output_lang):
+    def show_result(self, user_query, input_lang, output_lang, translated_text, bot_reply):
         # Show results and rating slider if submitted
-        if st.session_state.submitted:
+        if st.session_state.get("submitted", False):
             # Display last translation and reply
             st.subheader(f"Translated Message ({output_lang}): ")
-            st.success(st.session_state.last_translation)
+            st.success(translated_text)
 
             st.subheader(f"Support Reply ({output_lang}): ")
-            st.info(st.session_state.last_reply)
+            st.info(bot_reply)
 
             st.markdown("---")
 
@@ -160,11 +162,13 @@ class Functions:
                 st.success("Thanks for the great rating!")
 
             # Log interaction for download or further use    
-            self.log_interaction(user_query, input_lang, output_lang,rating) 
+            self.log_interaction(user_query, input_lang, output_lang, translated_text, bot_reply, rating) 
 
             if st.button("Next"):
-                self.reset_conversation()
-                st.experimental_rerun()
+                st.session_state.clear_query = True 
+                st.session_state.submitted = False
+                reset_conversation()
+                st.rerun()
 
             self.offer_download()            
 
@@ -172,20 +176,26 @@ def main():
     st.title("Real Time Multilingual Query Translator Bot")
 
     # Initialize session state variables
+    if "user_query" not in st.session_state:
+        st.session_state.user_query = ""
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
-    if "last_translation" not in st.session_state:
-        st.session_state.last_translation = ""
-    if "last_reply" not in st.session_state:
-        st.session_state.last_reply = ""
+    if "clear_query" not in st.session_state:
+        st.session_state.clear_query = False        
     if "rating" not in st.session_state:
         st.session_state.rating = 3  # default rating
 
     func = Functions(llm=llm, languages=LANGUAGES)
 
     func.show_intro()
+
+    if "clear_query" not in st.session_state:
+        st.session_state.clear_query = False
     
     input_lang, output_lang, user_query = func.get_user_inputs()
+
+    translated_text = ""
+    bot_reply = ""
 
     if st.button("Submit") and user_query.strip():
         input_lang_code = LANGUAGES[input_lang]
@@ -209,14 +219,12 @@ def main():
 
             # Save results in session_state so UI persists on rerun
             st.session_state.submitted = True
-            st.session_state.last_translation = translated_text
-            st.session_state.last_reply = bot_reply
 
         except Exception as e:
             st.error(f"⚠️ An error occurred: {e}")
             return    
             
-    func.show_result(user_query, input_lang, output_lang)               
+    func.show_result(user_query, input_lang, output_lang, translated_text, bot_reply)               
 
 if __name__ == "__main__":
     main()         

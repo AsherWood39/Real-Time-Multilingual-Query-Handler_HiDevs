@@ -1,8 +1,1 @@
 # Add your project dependencies here
-streamlit
-langchain
-langchain-groq
-langdetect
-langcodes
-pandas
-dotenv
